@@ -29,6 +29,7 @@ permitindo testes e desenvolvimento sem a necessidade do software original.
 ## Exemplo de Configuração do appsettings.json
 
 ```json
+{
   "ConnectionStrings": {
     "Default": "Provider=SQLite;Data Source=TestFilterV21.dbHistorian;"
   },
