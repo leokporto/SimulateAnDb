@@ -4,7 +4,7 @@ Este é um repositório para um projeto de simulação de banco de dados de hist
 O objetivo é criar um banco de dados que imite o comportamento e a estrutura do banco de dados utilizado pelo Action.Net Scada, 
 permitindo testes e desenvolvimento sem a necessidade de execução do software original por longos períodos de tempo para se obter dados para as pesquisas.
 
-<br/>
+
 >[!WARNING]
 >
 >Este aplicativo foi desenvolvido com o intuito de atualizar bases de dados do Action.Net. Para que funcione da forma esperada, utilize apenas este tipo de base.
