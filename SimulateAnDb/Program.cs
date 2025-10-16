@@ -1,20 +1,13 @@
-﻿// Program.cs
-// .NET 9
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Data.Common;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Spectre.Console;
 using Spectre.Console.Cli;
-using Microsoft.Extensions.Configuration;
+using System.Data;
+using System.Data.Common;
+using System.Globalization;
 
 namespace SimulateAnDb
 {
@@ -129,19 +122,29 @@ namespace SimulateAnDb
                 var currentTime = start;
                 var stepIndex = 0;
 
+                List<string>? columnsHeaders = new List<string>();
+
                 while (currentTime <= endInclusive)
                 {
+                    columnsHeaders.Clear();
+
                     var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
                     {
-                        ["UTCTimestamp_Ticks"] = DateTime.SpecifyKind(currentTime, DateTimeKind.Utc).Ticks,
+                        ["UTCTimestamp_Ticks"] = currentTime.ToUniversalTime().Ticks,
                         ["LogType"] = 1,
                         ["NotSync"] = 0
                     };
 
+                    columnsHeaders.Add("UTCTimestamp_Ticks");
+                    columnsHeaders.Add("LogType");
+                    columnsHeaders.Add("NotSync");
+
+                    int measureIndex = 0;
+
                     // compute values for each measure (non-strict sine) using its own state
-                    foreach (var m in measureColumns)
+                    foreach (var colName in measureColumns)
                     {
-                        var st = measureState[m];
+                        var st = measureState[colName];
 
                         // advance phase according to interval and period
                         var deltaPhase = (2.0 * Math.PI) * (settings.Interval / (double)st.PeriodMinutes);
@@ -160,12 +163,20 @@ namespace SimulateAnDb
                         // clamp to min/max
                         value = Math.Clamp(value, minVal, maxVal);
 
+                        // Parameter name (it is not the column name because of the special characters(/) used in it. Ex.: REGIAO_01/SE_01/BAY_01_MED_IA)
+                        // As it confuses Dapper, we use Measure_1, Measure_2, ...
+                        measureIndex++;
+                        var paramName = $"Measure_{measureIndex}";
+
                         // store as float
-                        row[m] = value;
+                        row[paramName] = value;                        
 
                         // quality
-                        var qName = $"_{m}_Q";
+                        var qName = $"{paramName}_Q";
                         row[qName] = rnd.NextDouble() < 0.9 ? (short)192 : (short)0;
+
+                        columnsHeaders.Add(colName);
+                        columnsHeaders.Add($"_{colName}_Q");
                     }
 
                     batchList.Add(row);
@@ -175,7 +186,7 @@ namespace SimulateAnDb
                     // if batch reached commit size, flush
                     if (batchList.Count >= commitBatchSize)
                     {
-                        await InsertBatchAndCommitAsync(connection, providerName, settings.Table, measureColumns, batchList);
+                        await InsertBatchAndCommitAsync(connection, providerName, settings.Table, columnsHeaders, batchList);
                         AnsiConsole.MarkupLine($"[green]{totalInserted} registros inseridos (ultimo timestamp {currentTime:yyyy-MM-dd HH:mm:ss}).[/]");
                         batchList.Clear();
                     }
@@ -184,10 +195,12 @@ namespace SimulateAnDb
                     currentTime = currentTime.AddMinutes(settings.Interval);
                 }
 
+                
+
                 // flush remaining
                 if (batchList.Count > 0)
                 {
-                    await InsertBatchAndCommitAsync(connection, providerName, settings.Table, measureColumns, batchList);
+                    await InsertBatchAndCommitAsync(connection, providerName, settings.Table, columnsHeaders, batchList);
                     AnsiConsole.MarkupLine($"[green]{totalInserted} registros inseridos (final).[/]");
                     batchList.Clear();
                 }
@@ -299,7 +312,7 @@ namespace SimulateAnDb
             if (provider == "SQLite")
             {
                 await conn.ExecuteAsync($"DELETE FROM {QuoteIdentifier(table, provider)};");
-                await conn.ExecuteAsync("DELETE FROM sqlite_sequence WHERE name = @name;", new { name = table });
+                await conn.ExecuteAsync("DELETE FROM sqlite_sequence WHERE name = @name;", new { name = table });                
             }
             else if (provider == "SqlServer")
             {
@@ -328,7 +341,7 @@ namespace SimulateAnDb
             var columns = first.Keys.ToList();
 
             // Ensure proper quoting
-            var quotedColumns = columns.Select(c => QuoteIdentifier(c, provider)).ToArray();
+            var quotedColumns = measureColumns.Select(c => QuoteIdentifier(c, provider)).ToArray();
             var columnListSql = string.Join(", ", quotedColumns);
 
             // Build parameter placeholders: for Dapper we will pass batch as IEnumerable<IDictionary<string,object>> and use parameter names as-is

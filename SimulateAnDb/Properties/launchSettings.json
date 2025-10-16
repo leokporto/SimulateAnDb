@@ -2,7 +2,7 @@
   "profiles": {
     "SimulateAnDb": {
       "commandName": "Project",
-      "commandLineArgs": "simulate -t ANA -i 5 -s 01-10-2025 -e 03-10-2025"
+      "commandLineArgs": "simulate -t ANA -i 1 -s 01-01-2025 -e 16-10-2025"
     }
   }
 }
